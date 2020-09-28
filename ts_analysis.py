@@ -6,6 +6,12 @@ import warnings
 from time import time
 warnings.filterwarnings("ignore")
 
+
+df = pd.read_csv('covid_state_9_27.csv')
+
+df = df.groupby(['state']).max()
+print(df)
+
 t1=time()
 '''STEP 1: Pre-processing the dataframes'''
 # NY live COVID data
@@ -41,8 +47,8 @@ for state in df.state.unique():
         remove_states.append(state)
         
 df=df[~df.state.isin(remove_states)]
-print(df)
+# print(df)
 t2=time()
 
-print(t2-t1)
+# print(t2-t1)
 '''STEP 2: Merging the dataframes'''

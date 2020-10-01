@@ -12,13 +12,13 @@ from dash.dependencies import Input, Output
 import dash_bootstrap_components as dbc
 # dash-table
 
+color_scale = {'cases': 'Blues', 'deaths': 'Reds'} # https://plotly.com/python/builtin-colorscales/
+
 external_stylesheets = [dbc.themes.BOOTSTRAP]
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 
 df = pd.read_csv('covid_state_9_27.csv')
 
-df = df.groupby(['state']).max()
-df.reset_index(inplace=True)
 
 # Merging with the state code
 states_url = 'https://raw.githubusercontent.com/plotly/datasets/master/2014_usa_states.csv'
@@ -35,62 +35,83 @@ intro_markdown = '''
 &emsp;The tally of Cases and Deaths at present and forecasts based on time-series can be evaluated below
 '''
 
-def return_usa_map(df, col):
-    fig = px.choropleth(
-        df,
+def return_usa_map(df, column):
+
+    # Latest total
+    state_df = df.groupby(['state']).max()
+    state_df.reset_index(inplace=True)
+
+    fig_usa_map = px.choropleth(
+        state_df,
         locations='Postal',
         locationmode="USA-states",
         scope='usa',
-        color=col,
+        color=column,
+        color_continuous_scale=color_scale[column],
         hover_name='Postal'
         # ,hover_data=['state']
     )
-    fig.update_layout(
-        title_text = f'USA {col}'
+    fig_usa_map.update_layout(
+        title_text = f'USA {column}'
     )
-    return fig
+
+    # Plot total cases/deaths by date
+    date_df = df.groupby('date').sum()
+    print(date_df)
+    fig_usa_total = px.scatter(
+        x = date_df.index,
+        y = date_df[column]
+    )
+    return fig_usa_map, fig_usa_total
 
 app.layout = html.Div(children=[
-
-    html.H1('Covid in the USA', className="mb-2", style={'text-align': 'center'}),
-    dcc.Markdown(children=intro_markdown),
- 
+    html.Div(children=[        
+        html.Br(),
+        html.H1('Covid in the USA', className="mb-2", style={'text-align': 'center'}),
+        dcc.Markdown(children=intro_markdown),
+        html.Br()
+        ]
+    ),
     dcc.Tabs(id='cases_or_deaths', value='cases', children=[
             dcc.Tab(label='Cases', value='cases'),
             dcc.Tab(label='Deaths', value='deaths')
         ]),
-    html.Div(id='cases_or_deaths_content')
-
+    html.Div(id='cases_or_deaths_content'),
+    html.Br(),
+    html.H1('Analysis of the state USA', className="mb-2", style={'text-align': 'center'}),
+                
     ],
     
     # style={'background-image': 'url("/assets/corona-background.jpg")', 'background-color': 'rgba(255, 255, 255, 0.16)'}
     style={'background-image': 'url("/assets/coronavirusbg.png")', 'background-size': '1400px 300px'}
 )
+
 @app.callback(Output('cases_or_deaths_content', 'children'),
               [Input('cases_or_deaths', 'value')]
 )
 def render_tabs(tab):
-    if tab == 'cases':
-        return html.Div(children=[
-            dcc.Graph(
-            id='usa-map',
-            figure=return_usa_map(df, tab)
-            )
-        ])
-    elif tab == 'deaths':
-        return html.Div(children=[
-            dcc.Graph(
-            id='usa-map',
-            figure=return_usa_map(df, tab)
-            # figure=fig
-            )
-        ])
+    usa_map, usa_total = return_usa_map(df, tab)
 
+    usa_plots = html.Div(
+        children=[
+            html.Div(children=[
+                    dcc.Graph(
+                    id='usa-map',
+                    figure=usa_map   # return_usa_map(df, tab)
+                    )
+                ], className='col-md-6 px-0'
+            ),
+            html.Div(children=[
+                    dcc.Graph(
+                    id='usa-map',
+                    figure=usa_total # return_usa_plot(df, tab)
+                    )
+                ], className='col-md-6 px-0'
+            )
+        ], className='row mx-0')
 
-# @app.callback(
-#     [Output(component_id='usa_map', component_property='figure')],
-#     [Input()]
-# )
+    return usa_plots
+    
 
 if __name__ == "__main__":
     app.run_server(debug=True)

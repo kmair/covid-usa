@@ -38,55 +38,6 @@ intro_markdown = '''
 &emsp;The tally of Cases and Deaths at present and forecasts based on time-series can be evaluated below
 '''
 
-def return_usa_plots(df, column):
-
-    # Latest total
-    state_df = df.groupby(['state']).max()
-    state_df.reset_index(inplace=True)
-
-    fig_usa_map = px.choropleth(
-        state_df,
-        locations='Postal',
-        locationmode="USA-states",
-        scope='usa',
-        color=column,
-        color_continuous_scale=color_scale[column],
-        hover_name='Postal'
-        # ,hover_data=['state']
-    )
-    fig_usa_map.update_layout(
-        title_text = f'USA {column}'
-    )
-
-    # Plot total cases/deaths by date
-    date_df = df.groupby('date').sum()
-
-    fig_usa_total = make_subplots(specs=[[{"secondary_y": True}]])
-    
-    fig_usa_total.add_trace(
-        go.Scatter(
-        x = date_df.index,
-        y = date_df[column].diff(),
-        name=f"Daily {column}",
-        fill='tozeroy'
-        ), secondary_y = True
-    )
-    
-    fig_usa_total.add_trace(
-        go.Scatter(
-        x = date_df.index,
-        y = date_df[column],
-        name=f"Total {column}",
-        
-        # labels=dict(x="", y=f"Total {column}")
-        ), secondary_y = False
-    )
-
-    fig_usa_total.update_layout(xaxis_range=[datetime.datetime(2020, 1, 10),
-                               datetime.date.today() + datetime.timedelta(days=10)])
-
-    return fig_usa_map, fig_usa_total
-
 def return_usa_stats(df, column):
     new_df = df.loc[:, ['date', 'state', 'Death to Case ratio', column]].set_index('date')
     state_df = new_df.groupby('state')
@@ -95,8 +46,8 @@ def return_usa_stats(df, column):
     latest_df = state_df.agg(['last'])
     latest_df = latest_df.droplevel(1, axis=1)  # removing agg of last from column
     latest_df = pop_df.merge(latest_df, left_on='State', right_index=True).drop(['Postal'], axis=1)
-    # print(latest_df)
     latest_df['Total per capita (%)'] = latest_df[column]/latest_df['Population']*100
+
     latest_df.rename({column: f'Total {column}'}, axis = 1, inplace=True)
     
     # Growth over the past week
@@ -134,7 +85,7 @@ def return_usa_stats(df, column):
             'color': 'white'
             },
         style_cell={
-            'fontFamily': 'Open Sans',
+            'fontFamily': 'Helvetica',
             'textAlign': 'left',
             'width': '150px',
             'minWidth': '80px',
@@ -150,6 +101,7 @@ def return_usa_stats(df, column):
                 'textAlign': 'left'
             } for c in {'State'}
         ],
+        
         # fixed_rows={'headers': True, 'data': 0}
     )
 
@@ -157,67 +109,53 @@ def return_usa_stats(df, column):
     # TODO: Add state name in text
     weekly_plot = px.scatter(
         data_frame=df,
-        color=f'Total {column}',
-        y=f'Total per capita (%)',
+        x='Death to Case ratio',
+        y='Total per capita (%)',
         size=f'Weekly % of total',
-        x='Death to Case ratio'
+        color=f'Total {column}',
+        title='Weekly increase by state'
     )
 
-    # 3. 
-    return stats_table, weekly_plot
+    # 3. Bar chart
+    bar_plot = px.bar(
+        df,
+        x='State',
+        y=f'Total {column}',
+        text='Total per capita (%)',
+        title=f'Total {column} by states'
+    )
+    bar_plot.update_traces(texttemplate='%{text:0.2f}')
+    bar_plot.update_layout(uniformtext_minsize=8, uniformtext_mode='show')
+
+    return stats_table, weekly_plot, bar_plot
 
 @app.callback(Output('container-button-timestamp', 'data'),
               [Input('btn-cases', 'n_clicks_timestamp'),
                Input('btn-deaths', 'n_clicks_timestamp')])
 def displayClick(case_click, death_click):
 
-    print(case_click, death_click)
     if int(death_click) > int(case_click):
         msg= 'deaths'
     else:
         msg = 'cases'
     return {'tab': msg} #html.Div(msg)
 
-def all_usa(tab):
-    usa_map, usa_total = return_usa_plots(df, tab)
-
-    usa_all = [
-        
-        html.Div(children=[
-                dcc.Graph(
-                id='usa-map',
-                figure=usa_map   
-                )
-            ], className='col-md-6 px-0'
-        ),
-        html.Div(children=[
-                dcc.Graph(
-                id='usa-map',
-                figure=usa_total 
-                )
-            ], className='col-md-6 px-0'
-        )
-    ]#, className='row mx-0')
-    
-    return usa_all
-
-# Table data
+# 1. USA analysis
 @app.callback(Output('cases_or_deaths_content', 'children'),
-            #   [Input('cases_or_death_tabs', 'value')]
             [Input("container-button-timestamp", "data")]
 )
-def render_tabs(data):
+def render_usa_data(data):
     tab = data['tab']
-    print('render_tabs', tab)
-    usa_map, usa_total = return_usa_plots(df, tab)
 
-    stats_table, weekly_plot = return_usa_stats(df, tab)
+    stats_table, weekly_plot, bar_plot = return_usa_stats(df, tab)
 
     usa_plots = html.Div([
 
         html.Div(
         children=[
-            html.Div(children=[stats_table], className='col-md-6'
+            html.Div(children=[
+                stats_table
+            ], className='col-md-6 my-2'
             ),
             html.Div(children=[
                     dcc.Graph(
@@ -229,30 +167,115 @@ def render_tabs(data):
         ], className='row mx-0'),
 
         html.Div(
-        # children=all_usa(tab)
         [
             html.Div(children=[
                     dcc.Graph(
-                    id='usa-map',
-                    figure=usa_map   
+                    id='usa-bar',
+                    figure=bar_plot   
                     )
-                ], className='col-md-6 px-0'
+                ], className='col-md-12 px-0'
             ),
-            html.Div(children=[
-                    dcc.Graph(
-                    id='usa-map',
-                    figure=usa_total 
-                    )
-                ], className='col-md-6 px-0'
-            )
+            # html.Div(children=[
+            #         dcc.Graph(
+            #         id='usa-map',
+            #         figure=usa_total 
+            #         )
+            #     ], className='col-md-6 px-0'
+            # )
         ], className='row mx-0'),
         
     ]
     )
     return usa_plots
  
+# 3. Render states
+# @app.callback(Output('states_content', 'children'),            
+#             [Input("container-button-timestamp", "data")]
+# )
+# def render_state_data(data):
+    # tab = data['tab']
+    # usa_map, usa_timeline = statewise_plots(df, tab)
+
+    
+    # return usa_plots
+
+# 2. USA map - selected state
+@app.callback(
+    # [
+    Output('states_content', 'figure'),
+    # Output('state_selected', 'data')
+    # ],
+    [Input("container-button-timestamp", "data")]
+)
+def render_usa_map(data):
+    column = data['tab']  # column: cases/ deaths
+
+    state_df = df.groupby(['state']).max()
+    state_df.reset_index(inplace=True)
+
+    fig_usa_map = px.choropleth(
+        state_df,
+        locations='Postal',
+        locationmode="USA-states",
+        scope='usa',
+        color=column,
+        color_continuous_scale=color_scale[column],
+        hover_name='Postal'
+        # ,hover_data=['state']
+    )
+
+    fig_usa_map.update_layout(
+        title_text = f'USA {column}',
+        clickmode='event+select'
+    )
+
+    return fig_usa_map
+
+@app.callback(
+    Output('clicked-state', 'data'),
+    [Input('states_content', 'clickData')]
+)
+def store_clicked_state(clickData):
+    print(json.dumps(clickData, indent=2))
+    return json.dumps(clickData, indent=2)
+
+
+# 3. State-wise analysis and Time-Series
+
+def statewise_plots(df, column):
+    # Plot total cases/deaths by date
+    date_df = df.groupby('date').sum()
+
+    fig_usa_timeline = make_subplots(specs=[[{"secondary_y": True}]])
+    
+    fig_usa_timeline.add_trace(
+        go.Scatter(
+        x = date_df.index,
+        y = date_df[column].diff(),
+        name=f"Daily {column}",
+        fill='tozeroy'
+        ), secondary_y = True
+    )
+    
+    fig_usa_timeline.add_trace(
+        go.Scatter(
+        x = date_df.index,
+        y = date_df[column],
+        name=f"Total {column}",
+        
+        # labels=dict(x="", y=f"Total {column}")
+        ), secondary_y = False
+    )
+
+    fig_usa_timeline.update_layout(xaxis_range=[datetime.datetime(2020, 1, 10),
+                               datetime.date.today() + datetime.timedelta(days=10)])
+
+    return fig_usa_timeline
+
+# Main Layout
 app.layout = html.Div(children=[
 
+    # Top Navbar
     dbc.Navbar(
         [
         html.A(
@@ -266,6 +289,8 @@ app.layout = html.Div(children=[
         )        
         ], color='dark', dark=True
     ),
+
+    # USA all states 
     html.Div(children=[        
         html.Br(),
         dcc.Markdown(children=intro_markdown),
@@ -280,13 +305,51 @@ app.layout = html.Div(children=[
         ]
     ),
     html.Div(id='cases_or_death_tabs'),
+    html.H1('Analysis of the United States', className="mb-2", style={'text-align': 'center'}),                
+    
     # TODO: https://community.plotly.com/t/data-table-select-all-rows/16619 -> Refer for un/selecting all rows
     html.Div(id='cases_or_deaths_content'),
     html.Br(),
-    html.H1('Analysis of the state USA', className="mb-2", style={'text-align': 'center'}),                
-    ],    
-    # style={'background-image': 'url("/assets/corona-background.jpg")', 'background-color': 'rgba(255, 255, 255, 0.16)'}
-    style={'background-image': 'url("/assets/coronavirusbg.png")', 'background-size': '1400px 300px'}
+
+    # USA map and statewise Time-series analysis
+    html.H1('State-wise analysis', className="mb-2", style={'text-align': 'center'}),        
+
+    html.Div(
+        [
+        dcc.Graph(
+            id='states_content'
+            )
+        ]
+    ),
+    dcc.Store(id='clicked-state')
+
+    # Layout ref
+    # usa_plots = html.Div([
+    #     html.Div(
+    #     [
+    #         html.Div(children=[
+    #                 dcc.Graph(
+    #                 id='usa-map',
+    #                 figure=usa_map   
+    #                 )
+    #             ], className='col-md-6 px-0'
+    #         ),
+    #         html.Div(children=[
+    #                 dcc.Graph(
+    #                 id='usa-timeline',
+    #                 figure=usa_timeline 
+    #                 )
+    #             ], className='col-md-6 px-0'
+    #         )
+    #     ], className='row mx-0'),
+        
+    # ])
+
+
+    ], 
+    style={'background-image': 'url("/assets/coronavirusbg.png")', 'background-size': '1700px 350px',
+    # 'background-color': 'rgba(155, 5, 5, 0.16)'
+    }
 )
 
    

@@ -4,6 +4,8 @@ import torch
 from urllib.request import urlopen
 import json
 import datetime
+from statsmodels.tsa.arima_model import ARIMA
+from sklearn.metrics import mean_squared_error
 
 import plotly.express as px
 import plotly.graph_objects as go
@@ -14,6 +16,9 @@ import dash_html_components as html
 import dash_table
 from dash.dependencies import Input, Output
 import dash_bootstrap_components as dbc
+
+import warnings
+warnings.filterwarnings('ignore')
 # dash-table
 
 color_scale = {'cases': 'Blues', 'deaths': 'Reds'} # https://plotly.com/python/builtin-colorscales/
@@ -113,7 +118,8 @@ def return_usa_stats(df, column):
         y='Total per capita (%)',
         size=f'Weekly % of total',
         color=f'Total {column}',
-        title='Weekly increase by state'
+        title='Weekly increase by state',
+        hover_name='State'
     )
 
     # 3. Bar chart
@@ -145,9 +151,9 @@ def displayClick(case_click, death_click):
             [Input("container-button-timestamp", "data")]
 )
 def render_usa_data(data):
-    tab = data['tab']
+    column = data['tab']
 
-    stats_table, weekly_plot, bar_plot = return_usa_stats(df, tab)
+    stats_table, weekly_plot, bar_plot = return_usa_stats(df, column)
 
     usa_plots = html.Div([
 
@@ -159,7 +165,6 @@ def render_usa_data(data):
             ),
             html.Div(children=[
                     dcc.Graph(
-                    id='usa-map',
                     figure=weekly_plot 
                     )
                 ], className='col-md-6 px-0'
@@ -175,36 +180,15 @@ def render_usa_data(data):
                     )
                 ], className='col-md-12 px-0'
             ),
-            # html.Div(children=[
-            #         dcc.Graph(
-            #         id='usa-map',
-            #         figure=usa_total 
-            #         )
-            #     ], className='col-md-6 px-0'
-            # )
         ], className='row mx-0'),
-        
+       
     ]
     )
     return usa_plots
  
-# 3. Render states
-# @app.callback(Output('states_content', 'children'),            
-#             [Input("container-button-timestamp", "data")]
-# )
-# def render_state_data(data):
-    # tab = data['tab']
-    # usa_map, usa_timeline = statewise_plots(df, tab)
-
-    
-    # return usa_plots
-
 # 2. USA map - selected state
 @app.callback(
-    # [
     Output('states_content', 'figure'),
-    # Output('state_selected', 'data')
-    # ],
     [Input("container-button-timestamp", "data")]
 )
 def render_usa_map(data):
@@ -220,7 +204,7 @@ def render_usa_map(data):
         scope='usa',
         color=column,
         color_continuous_scale=color_scale[column],
-        hover_name='Postal'
+        hover_name='state'   #'Postal'
         # ,hover_data=['state']
     )
 
@@ -236,41 +220,123 @@ def render_usa_map(data):
     [Input('states_content', 'clickData')]
 )
 def store_clicked_state(clickData):
-    print(json.dumps(clickData, indent=2))
     return json.dumps(clickData, indent=2)
 
 
 # 3. State-wise analysis and Time-Series
+@app.callback(
+    [
+        Output('state_plot', 'figure'),
+        Output('arima_plot', 'figure')
+    ],
+    [
+        Input("container-button-timestamp", "data"),
+        Input('clicked-state', 'data')
+    ]
+)
+def statewise_plots(data, clickedState):
+    '''
+    data (dict) :: {'tab': str} can be 'cases' or 'deaths'
+    clickedState (str) :: Click event is a string and first needs to be converted to dict
+    {"points": [{"curveNumber": int, "pointNumber": int, "pointIndex": int,
+                 "location": str, "z": int, "hovertext": str}]
+    }
+    location is 2-letter state code and hovertext is set to state name
+    '''
 
-def statewise_plots(df, column):
-    # Plot total cases/deaths by date
-    date_df = df.groupby('date').sum()
+    column = data['tab']
+    full_df = df.copy()
+    if clickedState == 'null':
+        print("Entire US")
+        daily_df = full_df.groupby('date').sum()
+        state = 'the United States'
+    
+    else:
+        clicked_point = eval(clickedState)['points'][0]
+        state = clicked_point['hovertext']
+        daily_df = full_df[full_df['state']==state].set_index('date')
 
+        print(daily_df)
+
+    # 1. State-wise plot
     fig_usa_timeline = make_subplots(specs=[[{"secondary_y": True}]])
     
     fig_usa_timeline.add_trace(
         go.Scatter(
-        x = date_df.index,
-        y = date_df[column].diff(),
+        x = daily_df.index,
+        y = daily_df[column].diff(),
         name=f"Daily {column}",
-        fill='tozeroy'
+        fill='tozeroy',
+        
         ), secondary_y = True
     )
     
     fig_usa_timeline.add_trace(
         go.Scatter(
-        x = date_df.index,
-        y = date_df[column],
+        x = daily_df.index,
+        y = daily_df[column],
         name=f"Total {column}",
         
-        # labels=dict(x="", y=f"Total {column}")
         ), secondary_y = False
     )
 
-    fig_usa_timeline.update_layout(xaxis_range=[datetime.datetime(2020, 1, 10),
-                               datetime.date.today() + datetime.timedelta(days=10)])
+    fig_usa_timeline.update_layout(
+        title = f'Tally of {column} in {state}'
+    )
 
-    return fig_usa_timeline
+    fig_usa_timeline.update_xaxes(
+        rangeslider_visible=True,
+    )
+
+    # 2. TS Forecasting
+    MA_period = 5
+    daily_df['per_day'] = daily_df[column].diff()
+    daily_df['rolling_avg'] = daily_df['per_day'].rolling(MA_period).mean()
+    print('daily_df', daily_df)
+    # ARIMA predictions
+    period = 30
+    fig_arima_plot = TS_plot(daily_df[[column, 'per_day', 'rolling_avg']].iloc[-period:], model='arima')
+    # 
+    # LSTM predictions
+    # lstm_result = TS_plot(df[[column, 'per_day', 'rolling_avg']], model='lstm')
+    return fig_usa_timeline, fig_arima_plot
+
+def TS_plot(df, model):
+
+    history = list(df.rolling_avg)
+    predictions=[]
+
+    fig = go.Figure()
+
+    fig.add_trace(go.Scatter(
+        x=df.index,
+        y=df.rolling_avg,
+        # name="Name of Trace 1"       # this sets its legend entry
+    ))
+
+    if model=='arima':
+        # Refer: https://www.machinelearningplus.com/time-series/arima-model-time-series-forecasting-python/ 
+        # for parameter selection
+        pred_time = 7
+        order = (5,0,0)
+        predictions=[]
+        bounds = []
+        day_list = []
+        # for t in range(pred_time):
+        #     day_list.append(t)
+        #     model = ARIMA(history, order=order)
+        #     model_fit = model.fit(disp=0)
+        #     output = model_fit.forecast()
+        #     # print('Time:', t, '->', output)
+        #     ypred = round(output[0][0])
+        #     predictions.append(ypred)
+        #     history.append(ypred)
+        #     history.pop(0)
+        #     bounds.append(output[2])
+
+        # print(predictions)
+
+    return fig
 
 # Main Layout
 app.layout = html.Div(children=[
@@ -314,36 +380,46 @@ app.layout = html.Div(children=[
     # USA map and statewise Time-series analysis
     html.H1('State-wise analysis', className="mb-2", style={'text-align': 'center'}),        
 
-    html.Div(
-        [
-        dcc.Graph(
-            id='states_content'
-            )
-        ]
-    ),
-    dcc.Store(id='clicked-state')
+    # dcc.Graph(id='states_content'),
+    dcc.Store(id='clicked-state'),
+    # dcc.Graph(id='state_plot'),
+    # dcc.Graph(id='arima_plot'),
 
     # Layout ref
-    # usa_plots = html.Div([
-    #     html.Div(
-    #     [
-    #         html.Div(children=[
-    #                 dcc.Graph(
-    #                 id='usa-map',
-    #                 figure=usa_map   
-    #                 )
-    #             ], className='col-md-6 px-0'
-    #         ),
-    #         html.Div(children=[
-    #                 dcc.Graph(
-    #                 id='usa-timeline',
-    #                 figure=usa_timeline 
-    #                 )
-    #             ], className='col-md-6 px-0'
-    #         )
-    #     ], className='row mx-0'),
-        
-    # ])
+    # usa_plots = 
+    html.Div([
+        html.Div(
+        [
+            html.Div(children=[
+                    dcc.Graph(
+                    id='states_content'    
+                    )
+                ], className='col-md-6 px-0'
+            ),
+            html.Div(children=[
+                    dcc.Graph(
+                    id='state_plot',
+                    )
+                ], className='col-md-6 px-0'
+            )
+        ], className='row mx-0'),
+
+        html.Div(
+        [
+            html.Div(children=[
+                    dcc.Graph(
+                    id='arima_plot'    
+                    )
+                ], className='col-md-6 px-0'
+            ),
+            # html.Div(children=[
+            #         dcc.Graph(
+            #         id='state_plot',
+            #         )
+            #     ], className='col-md-6 px-0'
+            # )
+        ], className='row mx-0'),  
+    ])
 
 
     ], 

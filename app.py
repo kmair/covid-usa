@@ -6,6 +6,8 @@ import json
 import datetime
 from statsmodels.tsa.arima_model import ARIMA
 from sklearn.metrics import mean_squared_error
+import pmdarima as pm
+from pmdarima import model_selection
 
 import plotly.express as px
 import plotly.graph_objects as go
@@ -35,7 +37,6 @@ pop_df = pd.read_csv(states_url)
 pop_df.drop(['Rank'], axis=1, inplace=True)
 df = df.merge(pop_df.iloc[:,:2], left_on='state', right_on='State') # Previous line can be avoided by selecting iloc[1:3]
 df.drop('State', axis=1, inplace=True)
-
 
 intro_markdown = '''
 &emsp;This app uses daily data posted by [The New York Times](https://github.com/nytimes/covid-19-data/blob/master/us-states.csv)
@@ -111,7 +112,6 @@ def return_usa_stats(df, column):
     )
 
     # 2. Scatter plot
-    # TODO: Add state name in text
     weekly_plot = px.scatter(
         data_frame=df,
         x='Death to Case ratio',
@@ -247,7 +247,6 @@ def statewise_plots(data, clickedState):
     column = data['tab']
     full_df = df.copy()
     if clickedState == 'null':
-        print("Entire US")
         daily_df = full_df.groupby('date').sum()
         state = 'the United States'
     
@@ -255,8 +254,6 @@ def statewise_plots(data, clickedState):
         clicked_point = eval(clickedState)['points'][0]
         state = clicked_point['hovertext']
         daily_df = full_df[full_df['state']==state].set_index('date')
-
-        print(daily_df)
 
     # 1. State-wise plot
     fig_usa_timeline = make_subplots(specs=[[{"secondary_y": True}]])
@@ -291,17 +288,17 @@ def statewise_plots(data, clickedState):
     # 2. TS Forecasting
     MA_period = 5
     daily_df['per_day'] = daily_df[column].diff()
-    daily_df['rolling_avg'] = daily_df['per_day'].rolling(MA_period).mean()
+    daily_df['rolling_avg'] = daily_df[column].rolling(MA_period).mean()
     print('daily_df', daily_df)
     # ARIMA predictions
     period = 30
-    fig_arima_plot = TS_plot(daily_df[[column, 'per_day', 'rolling_avg']].iloc[-period:], model='arima')
+    fig_arima_plot = TS_plot(daily_df[[column, 'per_day', 'rolling_avg']].iloc[1:], column, model='arima')
     # 
     # LSTM predictions
     # lstm_result = TS_plot(df[[column, 'per_day', 'rolling_avg']], model='lstm')
     return fig_usa_timeline, fig_arima_plot
 
-def TS_plot(df, model):
+def TS_plot(df, column, model):
 
     history = list(df.rolling_avg)
     predictions=[]
@@ -310,24 +307,27 @@ def TS_plot(df, model):
 
     fig.add_trace(go.Scatter(
         x=df.index,
-        y=df.rolling_avg,
+        y=df['per_day'],
         # name="Name of Trace 1"       # this sets its legend entry
     ))
 
+    next_weekdays = pd.date_range(start=df.index[-1], periods=8, freq='D')  # 8 days and start from 1 day after latest in data
+
+    last_data = df['per_day'].iloc[-1]
     if model=='arima':
         # Refer: https://www.machinelearningplus.com/time-series/arima-model-time-series-forecasting-python/ 
         # for parameter selection
-        pred_time = 7
-        order = (5,0,0)
-        predictions=[]
-        bounds = []
-        day_list = []
+        # pred_time = 7
+        # order = (5,0,0)
+        # predictions=[]
+        # bounds = []
+        # day_list = []
         # for t in range(pred_time):
         #     day_list.append(t)
         #     model = ARIMA(history, order=order)
         #     model_fit = model.fit(disp=0)
         #     output = model_fit.forecast()
-        #     # print('Time:', t, '->', output)
+        #     print('Time:', t, '->', output)
         #     ypred = round(output[0][0])
         #     predictions.append(ypred)
         #     history.append(ypred)
@@ -335,6 +335,23 @@ def TS_plot(df, model):
         #     bounds.append(output[2])
 
         # print(predictions)
+
+        model = pm.auto_arima(df['per_day'], start_p=1, start_q=1,# d=d,
+                     max_p=5, max_q=5, 
+                     seasonal=False,
+                     stepwise=True, suppress_warnings=True,# D=10, max_D=10,
+                     error_action='ignore')
+
+        # Create predictions for the future, evaluate on test
+        preds, conf_int = model.predict(n_periods=7, return_conf_int=True)
+
+        print(type(preds))
+        fig.add_trace(go.Scatter(
+        x=next_weekdays,
+        y=np.append([last_data], preds)
+        ))
+
+    fig.update_xaxes(rangeslider_visible=True)
 
     return fig
 

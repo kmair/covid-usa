@@ -64,8 +64,7 @@ def return_usa_stats(df, column):
     weekly_increase = pd.DataFrame(data=weekly_increase, columns=[f'Weekly {column} toll'])
 
     df = latest_df.round(decimals=3).merge(weekly_increase, left_on='State', right_index=True).drop(['Population'], axis=1)
-    df[f'Weekly % of total'] = df[f'Weekly {column} toll'] / df[f'Total {column}'] * 100
-
+    df[f'Weekly % of total'] = round(df[f'Weekly {column} toll'] / df[f'Total {column}'] * 100, 3)
     # Plotly
     # 1. Table
 
@@ -287,71 +286,96 @@ def statewise_plots(data, clickedState):
 
     # 2. TS Forecasting
     MA_period = 5
-    daily_df['per_day'] = daily_df[column].diff()
-    daily_df['rolling_avg'] = daily_df[column].rolling(MA_period).mean()
-    print('daily_df', daily_df)
+    
+    daily_df[['daily_cases', 'daily_deaths']] = daily_df[['cases', 'deaths']].diff()
+
     # ARIMA predictions
     period = 30
-    fig_arima_plot = TS_plot(daily_df[[column, 'per_day', 'rolling_avg']].iloc[1:], column, model='arima')
+    fig_arima_plot = TS_plot(daily_df.iloc[1:], column, model='arima')
     # 
     # LSTM predictions
     # lstm_result = TS_plot(df[[column, 'per_day', 'rolling_avg']], model='lstm')
     return fig_usa_timeline, fig_arima_plot
 
 def TS_plot(df, column, model):
+    '''
+    column (str): deaths or cases
+    '''
 
-    history = list(df.rolling_avg)
+    time_steps = 7
+
     predictions=[]
+
+    column_name = f'daily_{column}'
 
     fig = go.Figure()
 
     fig.add_trace(go.Scatter(
         x=df.index,
-        y=df['per_day'],
+        y=df[column_name],
         # name="Name of Trace 1"       # this sets its legend entry
     ))
 
-    next_weekdays = pd.date_range(start=df.index[-1], periods=8, freq='D')  # 8 days and start from 1 day after latest in data
+    next_weekdays = pd.date_range(start=df.index[-1], periods=time_steps+1, freq='D')  # 8 days and start from the last day in data
 
-    last_data = df['per_day'].iloc[-1]
+    last_data = df[column_name].iloc[-1]   # Taking last value to continue the last point in the plot
+
     if model=='arima':
-        # Refer: https://www.machinelearningplus.com/time-series/arima-model-time-series-forecasting-python/ 
-        # for parameter selection
-        # pred_time = 7
-        # order = (5,0,0)
-        # predictions=[]
-        # bounds = []
-        # day_list = []
-        # for t in range(pred_time):
-        #     day_list.append(t)
-        #     model = ARIMA(history, order=order)
-        #     model_fit = model.fit(disp=0)
-        #     output = model_fit.forecast()
-        #     print('Time:', t, '->', output)
-        #     ypred = round(output[0][0])
-        #     predictions.append(ypred)
-        #     history.append(ypred)
-        #     history.pop(0)
-        #     bounds.append(output[2])
-
-        # print(predictions)
-
-        model = pm.auto_arima(df['per_day'], start_p=1, start_q=1,# d=d,
+        title = 'Daily prediction with ARIMA model'
+        
+        model = pm.auto_arima(df[column_name], start_p=1, start_q=1,# d=d,
                      max_p=5, max_q=5, 
                      seasonal=False,
                      stepwise=True, suppress_warnings=True,# D=10, max_D=10,
                      error_action='ignore')
 
         # Create predictions for the future, evaluate on test
-        preds, conf_int = model.predict(n_periods=7, return_conf_int=True)
+        preds, conf_int = model.predict(n_periods=time_steps, return_conf_int=True)
 
-        print(type(preds))
+        # https://community.plotly.com/t/fill-area-upper-to-lower-bound-in-continuous-error-bars/19168
         fig.add_trace(go.Scatter(
         x=next_weekdays,
-        y=np.append([last_data], preds)
+        y=np.append([last_data], preds),
+        mode='lines',
+        name='Predicted'
         ))
 
+        # Lower bound        
+        fig.add_trace(go.Scatter(
+        x=next_weekdays,
+        y=np.append([last_data], conf_int[:,0]),
+        mode='lines',
+        line=dict(width=0.5, color="rgb(141, 196, 26)"),
+        fillcolor='rgba(68, 68, 68, 0.1)',
+        fill='tonexty'
+        ))
+
+        # Upper bound
+        fig.add_trace(go.Scatter(
+        x=next_weekdays,
+        y=np.append([last_data], conf_int[:,1]),
+        mode='lines',
+        line=dict(width=0.5,
+                 color="rgb(255, 188, 0)"),
+        fillcolor='rgba(68, 68, 68, 0.1)',
+        fill='tonexty'
+        ))
+
+    if model=='rnn':
+        title = 'Daily prediction with LSTM newtwork'
+        
+        
+        # Create predictions for the future, evaluate on test
+        # preds = forecast(n_periods=time_steps, return_conf_int=True)
+
+
+        pass
+
     fig.update_xaxes(rangeslider_visible=True)
+
+    fig.update_layout(
+        title = title
+    )
 
     return fig
 
@@ -397,13 +421,8 @@ app.layout = html.Div(children=[
     # USA map and statewise Time-series analysis
     html.H1('State-wise analysis', className="mb-2", style={'text-align': 'center'}),        
 
-    # dcc.Graph(id='states_content'),
     dcc.Store(id='clicked-state'),
-    # dcc.Graph(id='state_plot'),
-    # dcc.Graph(id='arima_plot'),
 
-    # Layout ref
-    # usa_plots = 
     html.Div([
         html.Div(
         [

@@ -9,24 +9,23 @@ import matplotlib.pyplot as plt
 
 import joblib
 
-
 scaler = joblib.load('assets/scaler.gz')
-MODEL_PATH = 'assets/lstm.pt'
+MODEL_PATH = 'assets/model.pt'
 
 class LSTM(nn.Module):
-    def __init__(self, n_cols=1, hidden_layer_size=100):
+    def __init__(self, hidden_layer_size=100):
         super().__init__()
         self.hidden_layer_size = hidden_layer_size
-        self.num_layers = 1
-        self.n_cols = n_cols
+        self.num_layers = 2
+        self.n_cols = 2  # 2 columns of death and cases features being predicted
 
-        self.lstm = nn.LSTM(input_size=n_cols, 
-                            hidden_size=hidden_layer_size,
+        self.lstm = nn.LSTM(input_size=self.n_cols, 
+                            hidden_size=self.hidden_layer_size,
                             num_layers = self.num_layers, 
                             batch_first=True)  
         # No dataloader, but we unsqueeze 0th dimension for it
 
-        self.linear = nn.Linear(hidden_layer_size, n_cols)
+        self.linear = nn.Linear(self.hidden_layer_size, self.n_cols)
 
         self.initiate_hidden()
 
@@ -47,13 +46,57 @@ class LSTM(nn.Module):
         self.hidden_cell = (h_0, c_0)
 
         predictions = self.linear(lstm_out.view(len(input_seq), -1))
-        return predictions[-1]
+        return predictions[-1:]  # To get last prediction
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-n_cols = 2
-model = LSTM(n_cols)
-model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
+rnn_model = LSTM()
+rnn_model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
 
-def predict(df):
-    pass
+INPUT_WINDOW = 7
+features = ['daily_cases', 'daily_deaths']
+
+df = pd.read_csv('covid_state_9_27.csv')
+df = df[df.state=='Florida']
+df[['daily_cases', 'daily_deaths']] = df[['cases', 'deaths']].diff()
+
+df['daily_cases'].fillna(df['cases'], inplace=True)
+df['daily_deaths'].fillna(df['deaths'], inplace=True)
+
+
+def predict(df, time_steps, INIT_WINDOW=10):
+
+    data = df[features].iloc[-(INPUT_WINDOW+INIT_WINDOW):]
+
+    data = scaler.transform(data)
+    data = torch.tensor(data)
+
+    predictions = []
+
+    rnn_model.eval()
+    rnn_model.initiate_hidden()
+    
+    with torch.no_grad():
+        for d in range(time_steps + INIT_WINDOW):
+            ypred = rnn_model(data.float())
+            data = torch.cat((data[1:], ypred), dim=0)
+
+            if d >= INIT_WINDOW:
+                # print(ypred)
+                actual = scaler.inverse_transform(ypred)
+                predictions.append(actual[0])
+
+    predictions = np.ceil(np.array(predictions))
+    
+    return predictions
+
+predictions = predict(df, 6, 4)
+print(predictions)
+
+col = 0
+actual = df[features].iloc[:,col]
+# print(actual)
+x = np.arange(len(actual), len(actual)+len(predictions))
+plt.plot(np.arange(len(actual)), actual)  
+plt.plot(x, predictions[:,col])  
+plt.show()

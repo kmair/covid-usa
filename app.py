@@ -4,11 +4,12 @@ import torch
 from urllib.request import urlopen
 import json
 import datetime
+import joblib
 from statsmodels.tsa.arima_model import ARIMA
 from sklearn.metrics import mean_squared_error
 import pmdarima as pm
 from pmdarima import model_selection
-
+# PLOTLY imports
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -21,22 +22,33 @@ import dash_bootstrap_components as dbc
 
 import warnings
 warnings.filterwarnings('ignore')
-# dash-table
 
+from ml_model import LSTM, predict
+
+# Initialize styling
 color_scale = {'cases': 'Blues', 'deaths': 'Reds'} # https://plotly.com/python/builtin-colorscales/
 
 external_stylesheets = [dbc.themes.BOOTSTRAP]
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 
+# Recent Covid Data
 df = pd.read_csv('covid_state_9_27.csv')
 df['Death to Case ratio'] = df.deaths / (df.cases + 1e-3) 
 
 # Merging with the state code
 states_url = 'https://raw.githubusercontent.com/plotly/datasets/master/2014_usa_states.csv'
-pop_df = pd.read_csv(states_url)
-pop_df.drop(['Rank'], axis=1, inplace=True)
+# pop_df = pd.read_csv(states_url)
+pop_df = pd.read_csv('assets/demographics.csv')
+# pop_df.drop(['Rank'], axis=1, inplace=True)
 df = df.merge(pop_df.iloc[:,:2], left_on='state', right_on='State') # Previous line can be avoided by selecting iloc[1:3]
 df.drop('State', axis=1, inplace=True)
+
+# Load RNN model artifacts
+# scaler = joblib.load('assets/scaler.gz')
+# MODEL_PATH = 'assets/lstm.pt'
+
+# model = LSTM()
+# model.load_state_dict(torch.load(MODEL_PATH, map_location="cpu"))
 
 intro_markdown = '''
 &emsp;This app uses daily data posted by [The New York Times](https://github.com/nytimes/covid-19-data/blob/master/us-states.csv)
@@ -289,19 +301,25 @@ def statewise_plots(data, clickedState):
     
     daily_df[['daily_cases', 'daily_deaths']] = daily_df[['cases', 'deaths']].diff()
 
+    kwargs = {
+        'column': column,
+
+    }
     # ARIMA predictions
     period = 30
-    fig_arima_plot = TS_plot(daily_df.iloc[1:], column, model='arima')
+    fig_arima_plot = TS_plot(daily_df.iloc[1:], model='arima', **kwargs)
     # 
     # LSTM predictions
-    # lstm_result = TS_plot(df[[column, 'per_day', 'rolling_avg']], model='lstm')
+    # [['daily_cases', 'daily_deaths']]
+    lstm_result = TS_plot(daily_df, model='rnn', **kwargs)
     return fig_usa_timeline, fig_arima_plot
 
-def TS_plot(df, column, model):
+def TS_plot(df, model, **kwargs):
     '''
     column (str): deaths or cases
     '''
 
+    column = kwargs.get('column')
     time_steps = 7
 
     predictions=[]
@@ -313,7 +331,7 @@ def TS_plot(df, column, model):
     fig.add_trace(go.Scatter(
         x=df.index,
         y=df[column_name],
-        # name="Name of Trace 1"       # this sets its legend entry
+        name="Latest"       # this sets its legend entry
     ))
 
     next_weekdays = pd.date_range(start=df.index[-1], periods=time_steps+1, freq='D')  # 8 days and start from the last day in data
@@ -337,13 +355,14 @@ def TS_plot(df, column, model):
         x=next_weekdays,
         y=np.append([last_data], preds),
         mode='lines',
-        name='Predicted'
+        name='Forecast'
         ))
 
         # Lower bound        
         fig.add_trace(go.Scatter(
         x=next_weekdays,
         y=np.append([last_data], conf_int[:,0]),
+        name='Lower limit',
         mode='lines',
         line=dict(width=0.5, color="rgb(141, 196, 26)"),
         fillcolor='rgba(68, 68, 68, 0.1)',
@@ -354,6 +373,7 @@ def TS_plot(df, column, model):
         fig.add_trace(go.Scatter(
         x=next_weekdays,
         y=np.append([last_data], conf_int[:,1]),
+        name='Upper limit',
         mode='lines',
         line=dict(width=0.5,
                  color="rgb(255, 188, 0)"),
@@ -362,13 +382,19 @@ def TS_plot(df, column, model):
         ))
 
     if model=='rnn':
-        title = 'Daily prediction with LSTM newtwork'
+        title = 'Daily prediction with LSTM network'
         
+        col_index = 0 if column=='cases' else 1
         
         # Create predictions for the future, evaluate on test
-        # preds = forecast(n_periods=time_steps, return_conf_int=True)
+        preds = predict(df, time_steps)
 
-
+        fig.add_trace(go.Scatter(
+        x=next_weekdays,
+        y=np.append([last_data], preds),
+        mode='lines',
+        name='Predicted'
+        ))
         pass
 
     fig.update_xaxes(rangeslider_visible=True)

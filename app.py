@@ -7,8 +7,6 @@ import datetime
 import joblib
 from statsmodels.tsa.arima_model import ARIMA
 from sklearn.metrics import mean_squared_error
-import pmdarima as pm
-from pmdarima import model_selection
 # PLOTLY imports
 import plotly.express as px
 import plotly.graph_objects as go
@@ -23,7 +21,7 @@ import dash_bootstrap_components as dbc
 import warnings
 warnings.filterwarnings('ignore')
 
-from ml_model import LSTM, predict
+from ml_model import LSTM, TS_plot, predict_rnn
 
 # Initialize styling
 color_scale = {'cases': 'Blues', 'deaths': 'Reds'} # https://plotly.com/python/builtin-colorscales/
@@ -311,99 +309,8 @@ def statewise_plots(data, clickedState):
     # 
     # LSTM predictions
     # [['daily_cases', 'daily_deaths']]
-    lstm_result = TS_plot(daily_df, model='rnn', **kwargs)
+    # lstm_result = TS_plot(daily_df, model='rnn', **kwargs)
     return fig_usa_timeline, fig_arima_plot
-
-def TS_plot(df, model, **kwargs):
-    '''
-    column (str): deaths or cases
-    '''
-
-    column = kwargs.get('column')
-    time_steps = 7
-
-    predictions=[]
-
-    column_name = f'daily_{column}'
-
-    fig = go.Figure()
-
-    fig.add_trace(go.Scatter(
-        x=df.index,
-        y=df[column_name],
-        name="Latest"       # this sets its legend entry
-    ))
-
-    next_weekdays = pd.date_range(start=df.index[-1], periods=time_steps+1, freq='D')  # 8 days and start from the last day in data
-
-    last_data = df[column_name].iloc[-1]   # Taking last value to continue the last point in the plot
-
-    if model=='arima':
-        title = 'Daily prediction with ARIMA model'
-        
-        model = pm.auto_arima(df[column_name], start_p=1, start_q=1,# d=d,
-                     max_p=5, max_q=5, 
-                     seasonal=False,
-                     stepwise=True, suppress_warnings=True,# D=10, max_D=10,
-                     error_action='ignore')
-
-        # Create predictions for the future, evaluate on test
-        preds, conf_int = model.predict(n_periods=time_steps, return_conf_int=True)
-
-        # https://community.plotly.com/t/fill-area-upper-to-lower-bound-in-continuous-error-bars/19168
-        fig.add_trace(go.Scatter(
-        x=next_weekdays,
-        y=np.append([last_data], preds),
-        mode='lines',
-        name='Forecast'
-        ))
-
-        # Lower bound        
-        fig.add_trace(go.Scatter(
-        x=next_weekdays,
-        y=np.append([last_data], conf_int[:,0]),
-        name='Lower limit',
-        mode='lines',
-        line=dict(width=0.5, color="rgb(141, 196, 26)"),
-        fillcolor='rgba(68, 68, 68, 0.1)',
-        fill='tonexty'
-        ))
-
-        # Upper bound
-        fig.add_trace(go.Scatter(
-        x=next_weekdays,
-        y=np.append([last_data], conf_int[:,1]),
-        name='Upper limit',
-        mode='lines',
-        line=dict(width=0.5,
-                 color="rgb(255, 188, 0)"),
-        fillcolor='rgba(68, 68, 68, 0.1)',
-        fill='tonexty'
-        ))
-
-    if model=='rnn':
-        title = 'Daily prediction with LSTM network'
-        
-        col_index = 0 if column=='cases' else 1
-        
-        # Create predictions for the future, evaluate on test
-        preds = predict(df, time_steps)
-
-        fig.add_trace(go.Scatter(
-        x=next_weekdays,
-        y=np.append([last_data], preds),
-        mode='lines',
-        name='Predicted'
-        ))
-        pass
-
-    fig.update_xaxes(rangeslider_visible=True)
-
-    fig.update_layout(
-        title = title
-    )
-
-    return fig
 
 # Main Layout
 app.layout = html.Div(children=[

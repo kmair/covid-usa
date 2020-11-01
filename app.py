@@ -21,7 +21,7 @@ import dash_bootstrap_components as dbc
 import warnings
 warnings.filterwarnings('ignore')
 
-from ml_model import LSTM, TS_plot, predict_rnn
+from ml_model import TS_plots
 
 # Initialize styling
 color_scale = {'cases': 'Blues', 'deaths': 'Reds'} # https://plotly.com/python/builtin-colorscales/
@@ -305,11 +305,11 @@ def statewise_plots(data, clickedState):
     }
     # ARIMA predictions
     period = 30
-    fig_arima_plot = TS_plot(daily_df.iloc[1:], model='arima', **kwargs)
-    # 
+    fig_arima_plot = TS_plots(daily_df.iloc[1:], model='arima', **kwargs)
+    print("Updated plots")
     # LSTM predictions
     # [['daily_cases', 'daily_deaths']]
-    # lstm_result = TS_plot(daily_df, model='rnn', **kwargs)
+    # lstm_result = TS_plots(daily_df, model='rnn', **kwargs)
     return fig_usa_timeline, fig_arima_plot
 
 # Main Layout

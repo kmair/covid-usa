@@ -13,3 +13,5 @@ To check
 ## Project Status 
 
 The project is currently being deployed on Heroku and can be replicated on the device by setting up the environment using the `requirements.txt` file
+
+Refer: https://www.makeareadme.com/

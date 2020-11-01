@@ -236,7 +236,8 @@ def store_clicked_state(clickData):
 @app.callback(
     [
         Output('state_plot', 'figure'),
-        Output('arima_plot', 'figure')
+        Output('arima_plot', 'figure'),
+        Output('lstm_plot', 'figure')
     ],
     [
         Input("container-button-timestamp", "data"),
@@ -295,7 +296,6 @@ def statewise_plots(data, clickedState):
     )
 
     # 2. TS Forecasting
-    MA_period = 5
     
     daily_df[['daily_cases', 'daily_deaths']] = daily_df[['cases', 'deaths']].diff()
 
@@ -305,12 +305,10 @@ def statewise_plots(data, clickedState):
     }
     # ARIMA predictions
     period = 30
-    fig_arima_plot = TS_plots(daily_df.iloc[1:], model='arima', **kwargs)
-    print("Updated plots")
+    fig_arima_plot = TS_plots(daily_df, model='arima', **kwargs)
     # LSTM predictions
-    # [['daily_cases', 'daily_deaths']]
-    # lstm_result = TS_plots(daily_df, model='rnn', **kwargs)
-    return fig_usa_timeline, fig_arima_plot
+    fig_lstm_plot = TS_plots(daily_df, model='rnn', **kwargs)
+    return fig_usa_timeline, fig_arima_plot, fig_lstm_plot
 
 # Main Layout
 app.layout = html.Div(children=[
@@ -381,12 +379,12 @@ app.layout = html.Div(children=[
                     )
                 ], className='col-md-6 px-0'
             ),
-            # html.Div(children=[
-            #         dcc.Graph(
-            #         id='state_plot',
-            #         )
-            #     ], className='col-md-6 px-0'
-            # )
+            html.Div(children=[
+                    dcc.Graph(
+                    id='lstm_plot',
+                    )
+                ], className='col-md-6 px-0'
+            )
         ], className='row mx-0'),  
     ])
 

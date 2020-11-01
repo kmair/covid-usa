@@ -12,8 +12,6 @@ import matplotlib.pyplot as plt
 
 import joblib
 
-# scaler = joblib.load('assets/scaler.gz')
-# MODEL_PATH = 'assets/model.pt'
 
 # LSTM Model
 class LSTM(nn.Module):
@@ -23,17 +21,16 @@ class LSTM(nn.Module):
         self.hidden_layer_size = hidden_layer_size
         self.num_layers = 2
         self.n_cols = 1  
+        self.hidden_lin = 20
 
         self.lstm = nn.LSTM(input_size=self.n_cols, 
                             hidden_size=self.hidden_layer_size,
                             num_layers = self.num_layers, 
                             batch_first=True)  
 
-        hidden_lin = 20
-
-        self.linear1 = nn.Linear(self.hidden_layer_size, hidden_lin)
+        self.linear1 = nn.Linear(self.hidden_layer_size, self.hidden_lin)
         self.drop = nn.Dropout(p=0.3)
-        self.linear2 = nn.Linear(hidden_lin, self.n_cols)
+        self.linear2 = nn.Linear(self.hidden_lin, self.n_cols)
 
     def forward(self, input_seq, start_bool=False):
        
@@ -62,40 +59,32 @@ INPUT_WINDOW = 7
 features = ['daily_cases', 'daily_deaths']
 
 # Predicting LSTM
-def predict_rnn(df, column, time_steps, arima_preds, INIT_WINDOW=0):
+def preprocess(x):
+  div = max(max(x), 1)
+  x = x/div 
+  x = torch.tensor(x).view(-1,1).float().to(device)
+  return x,div
+
+
+def predict_rnn(df, column, time_steps):
+    model = models[f'model_{column}']
+    model.eval()
+
     daily_column = f'daily_{column}'
+    
+    x = df[daily_column].iloc[-INPUT_WINDOW:].values 
 
-    #     data = df[features].iloc[-(INPUT_WINDOW+INIT_WINDOW):]
+    preds = []
+    for t in range(time_steps):
+        with torch.no_grad():
+            seq, div = preprocess(x)
+            ypred = model(seq)
+            ypred = np.round(ypred.item() * div)
 
-    #     preds = np.reshape(np.append(arima_preds, np.zeros_like(arima_preds)), (time_steps, -1), 'F')
-    #     data = np.append(data, preds, axis=0)
-
-    #     data = scaler.transform(data)
-    #     data = torch.tensor(data)
-
-    #     predictions = []
-
-    #     rnn_model.eval()
-    #     rnn_model.initiate_hidden()
+            preds.append(ypred)
+            x = np.append(x, ypred)[1:]
         
-    #     with torch.no_grad():
-    #         for d in range(time_steps + INIT_WINDOW):
-    #             # ypred = rnn_model(data.float())
-    #             # data = torch.cat((data[1:], ypred), dim=0)
-    #             seq = data[d:d+INPUT_WINDOW].float()
-    #             if d >= INIT_WINDOW:
-    #                 print(seq)
-    #             ypred = rnn_model(data.float())
-
-    #             if d >= INIT_WINDOW:
-    #                 print(ypred)
-    #                 actual = scaler.inverse_transform(ypred)
-    #                 predictions.append(actual[0])
-
-    #     predictions = np.ceil(np.array(predictions))
-        
-    #     return predictions
-    return 1
+    return preds
    
 # Plot the required model
 def TS_plots(df, model, **kwargs):
@@ -104,11 +93,6 @@ def TS_plots(df, model, **kwargs):
     '''
     column = kwargs.get('column')
 
-    arima_plot = get_plot(df, 'arima', column)
-
-    return arima_plot
-
-def get_plot(df, model, column):
     time_steps = 3
 
     predictions=[]
@@ -119,7 +103,6 @@ def get_plot(df, model, column):
 
     fig.add_trace(go.Scatter(
         x=df.index,
-        # y=df[column_name],
         y=df[daily_column],
         name="Latest"       # this sets its legend entry
     ))
@@ -174,6 +157,14 @@ def get_plot(df, model, column):
     if model=='rnn':
         title = 'Daily prediction with LSTM network'
         
+        preds = predict_rnn(df, column, time_steps)       
+        
+        fig.add_trace(go.Scatter(
+        x=next_weekdays,
+        y=np.append([last_data], preds),
+        mode='lines',
+        name='Forecast'
+        ))
     #     col_index = 0 if column=='cases' else 1
         
     #     # Create predictions for the future, evaluate on test

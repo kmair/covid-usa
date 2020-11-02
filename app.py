@@ -24,7 +24,7 @@ warnings.filterwarnings('ignore')
 from ml_model import TS_plots
 
 # Initialize styling
-color_scale = {'cases': 'Blues', 'deaths': 'Reds'} # https://plotly.com/python/builtin-colorscales/
+color_theme = {'cases': 'Blues', 'deaths': 'Greys'} # https://plotly.com/python/builtin-colorscales/
 
 external_stylesheets = [dbc.themes.BOOTSTRAP]
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
@@ -62,14 +62,11 @@ def return_usa_stats(df, column):
     latest_df = state_df.agg(['last'])
     latest_df = latest_df.droplevel(1, axis=1)  # removing agg of last from column
     latest_df = pop_df.merge(latest_df, left_on='State', right_index=True).drop(['Postal'], axis=1)
-    latest_df['Total per capita (%)'] = latest_df[column]/latest_df['Population']*100
+    latest_df[f'Total {column} per capita (%)'] = latest_df[column]/latest_df['Population']*100
 
     latest_df.rename({column: f'Total {column}'}, axis = 1, inplace=True)
     
     # Growth over the past week
-    # rolling_sum = state_df.rolling(5).sum()  # Past week count
-    # rolling_sum = rolling_sum.reset_index().groupby('state').agg('last')
-    # rolling_sum = rolling_sum.drop('date', axis=1).rename({column: f'Increase in a week'}, axis=1)
     weekly_increase = state_df.apply(lambda x: (x[column].iloc[-1]-x[column].iloc[-8]))
     weekly_increase = pd.DataFrame(data=weekly_increase, columns=[f'Weekly {column} toll'])
 
@@ -124,20 +121,28 @@ def return_usa_stats(df, column):
     weekly_plot = px.scatter(
         data_frame=df,
         x='Death to Case ratio',
-        y='Total per capita (%)',
+        y=f'Total {column} per capita (%)',
         size=f'Weekly % of total',
-        color=f'Total {column}',
-        title='Weekly increase by state',
-        hover_name='State'
+        # color=f'Total {column}',
+        title=f'Weekly increase in {column} by state',
+        hover_name='State',
+        color_discrete_map={
+            'Democratic': 'blue',
+            'Republican': 'red'
+        },
+        color='Party',
     )
+    leg = go.layout.Legend(title='Governing Party', orientation='h', y=1.1)
+    weekly_plot.update_layout(legend=leg)
+        # x=0,y=0.5)
 
     # 3. Bar chart
     bar_plot = px.bar(
         df,
         x='State',
         y=f'Total {column}',
-        text='Total per capita (%)',
-        title=f'Total {column} by states'
+        text=f'Total {column} per capita (%)',
+        title=f'Total {column} by state'
     )
     bar_plot.update_traces(texttemplate='%{text:0.2f}')
     bar_plot.update_layout(uniformtext_minsize=8, uniformtext_mode='show')
@@ -170,15 +175,15 @@ def render_usa_data(data):
         children=[
             html.Div(children=[
                 stats_table
-            ], className='col-md-6 my-2'
+            ], className='col-md-7'
             ),
             html.Div(children=[
                     dcc.Graph(
                     figure=weekly_plot 
                     )
-                ], className='col-md-6 px-0'
+                ], className='col-md-5 px-0'
             )
-        ], className='row mx-0'),
+        ], className='row mx-2'),
 
         html.Div(
         [
@@ -189,7 +194,7 @@ def render_usa_data(data):
                     )
                 ], className='col-md-12 px-0'
             ),
-        ], className='row mx-0'),
+        ], className='row mx-2'),
        
     ]
     )
@@ -212,7 +217,7 @@ def render_usa_map(data):
         locationmode="USA-states",
         scope='usa',
         color=column,
-        color_continuous_scale=color_scale[column],
+        color_continuous_scale=color_theme[column],
         hover_name='state'   #'Postal'
         # ,hover_data=['state']
     )
@@ -369,7 +374,7 @@ app.layout = html.Div(children=[
                     )
                 ], className='col-md-6 px-0'
             )
-        ], className='row mx-0'),
+        ], className='row mx-2'),
 
         html.Div(
         [
@@ -385,12 +390,13 @@ app.layout = html.Div(children=[
                     )
                 ], className='col-md-6 px-0'
             )
-        ], className='row mx-0'),  
+        ], className='row mx-2'),  
     ])
 
 
     ], 
     style={'background-image': 'url("/assets/coronavirusbg.png")', 'background-size': '1700px 350px',
+        'background-attachment': 'fixed'
     # 'background-color': 'rgba(155, 5, 5, 0.16)'
     }
 )

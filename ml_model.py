@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 
 import joblib
 
-
+color_scheme = {'cases': '#4038b0', 'deaths': '#828080'}
 # LSTM Model
 class LSTM(nn.Module):
 
@@ -42,7 +42,7 @@ class LSTM(nn.Module):
 
         return x[-1:]  # To get last prediction
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model_cases = LSTM()
 PATH = 'assets/lstm_cases.pt'
 model_cases.load_state_dict(torch.load(PATH, map_location=device))
@@ -52,7 +52,7 @@ PATH = 'assets/lstm_deaths.pt'
 model_deaths.load_state_dict(torch.load(PATH, map_location=device))
 
 models = {'model_cases': model_cases, 'model_deaths': model_deaths}
-print("Models loaded")
+print('Models loaded')
 
 INPUT_WINDOW = 7
 
@@ -93,7 +93,7 @@ def TS_plots(df, model, **kwargs):
     '''
     column = kwargs.get('column')
 
-    time_steps = 3
+    time_steps = 10
 
     predictions=[]
 
@@ -104,7 +104,8 @@ def TS_plots(df, model, **kwargs):
     fig.add_trace(go.Scatter(
         x=df.index,
         y=df[daily_column],
-        name="Latest"       # this sets its legend entry
+        name='Latest' ,
+        line=dict(color=color_scheme[column]),
     ))
 
     next_weekdays = pd.date_range(start=df.index[-1], periods=time_steps+1, freq='D')  # 8 days and start from the last day in data
@@ -128,7 +129,10 @@ def TS_plots(df, model, **kwargs):
         x=next_weekdays,
         y=np.append([last_data], preds),
         mode='lines',
-        name='Forecast'
+        name='ARIMA Forecast',
+        # color='0d41ff'
+        # line=dict(width=0.5, color='rgb(141, 196, 26)'),
+
         ))
 
         # Lower bound        
@@ -137,7 +141,7 @@ def TS_plots(df, model, **kwargs):
         y=np.append([last_data], conf_int[:,0]),
         name='Lower limit',
         mode='lines',
-        line=dict(width=0.5, color="rgb(141, 196, 26)"),
+        line=dict(width=0.5, color='rgb(141, 196, 26)'),
         fillcolor='rgba(68, 68, 68, 0.1)',
         fill='tonexty'
         ))
@@ -148,8 +152,7 @@ def TS_plots(df, model, **kwargs):
         y=np.append([last_data], conf_int[:,1]),
         name='Upper limit',
         mode='lines',
-        line=dict(width=0.5,
-                 color="rgb(255, 188, 0)"),
+        line=dict(width=0.5, color='rgb(255, 188, 0)'),
         fillcolor='rgba(68, 68, 68, 0.1)',
         fill='tonexty'
         ))
@@ -163,7 +166,7 @@ def TS_plots(df, model, **kwargs):
         x=next_weekdays,
         y=np.append([last_data], preds),
         mode='lines',
-        name='Forecast'
+        name='LSTM Forecast'
         ))
     #     col_index = 0 if column=='cases' else 1
         
@@ -187,7 +190,7 @@ def TS_plots(df, model, **kwargs):
     return fig
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
         
     df = pd.read_csv('covid_state_9_27.csv')
     df = df[df.state=='Idaho']

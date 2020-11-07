@@ -3,13 +3,8 @@ import torch.nn as nn
 import plotly.graph_objects as go
 import pmdarima as pm
 from pmdarima import model_selection
-
-from sklearn.preprocessing import MinMaxScaler, StandardScaler
-import seaborn as sns
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-
 import joblib
 
 color_scheme = {'cases': '#4038b0', 'deaths': '#828080'}
@@ -52,7 +47,6 @@ PATH = 'assets/lstm_deaths.pt'
 model_deaths.load_state_dict(torch.load(PATH, map_location=device))
 
 models = {'model_cases': model_cases, 'model_deaths': model_deaths}
-print('Models loaded')
 
 INPUT_WINDOW = 7
 
@@ -188,24 +182,3 @@ def TS_plots(df, model, **kwargs):
     )
 
     return fig
-
-
-if __name__ == '__main__':
-        
-    df = pd.read_csv('covid_state_9_27.csv')
-    df = df[df.state=='Idaho']
-    df[['daily_cases', 'daily_deaths']] = df[['cases', 'deaths']].diff()
-
-    df['daily_cases'].fillna(df['cases'], inplace=True)
-    df['daily_deaths'].fillna(df['deaths'], inplace=True)
-
-    # predictions = predict_rnn(df, 6, 0)
-    # print(predictions)
-
-    col = 0
-    actual = df[features].iloc[:,col]
-    # print(actual)
-    # x = np.arange(len(actual), len(actual)+len(predictions))
-    # plt.plot(np.arange(len(actual)), actual)  
-    # plt.plot(x, predictions[:,col])  
-    # plt.show()

@@ -1,3 +1,4 @@
+from dash_html_components.Div import Div
 import pandas as pd 
 import numpy as np
 import torch
@@ -5,8 +6,7 @@ from urllib.request import urlopen
 import json
 import datetime
 import joblib
-from statsmodels.tsa.arima_model import ARIMA
-from sklearn.metrics import mean_squared_error
+
 # PLOTLY imports
 import plotly.express as px
 import plotly.graph_objects as go
@@ -17,36 +17,32 @@ import dash_html_components as html
 import dash_table
 from dash.dependencies import Input, Output
 import dash_bootstrap_components as dbc
+from ml_model import TS_plots
 
 import warnings
 warnings.filterwarnings('ignore')
 
-from ml_model import TS_plots
 
 # Initialize styling
 color_theme = {'cases': 'Blues', 'deaths': 'Greys'} # https://plotly.com/python/builtin-colorscales/
 
 external_stylesheets = [dbc.themes.BOOTSTRAP]
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
+server = app.server
 
 # Recent Covid Data
-df = pd.read_csv('covid_state_9_27.csv')
+df = pd.read_csv('https://raw.githubusercontent.com/nytimes/covid-19-data/master/us-states.csv')
+
+# df = pd.read_csv('covid_state_9_27.csv')
 df['Death to Case ratio'] = df.deaths / (df.cases + 1e-3) 
 
 # Merging with the state code
 states_url = 'https://raw.githubusercontent.com/plotly/datasets/master/2014_usa_states.csv'
-# pop_df = pd.read_csv(states_url)
+
 pop_df = pd.read_csv('assets/demographics.csv')
-# pop_df.drop(['Rank'], axis=1, inplace=True)
-df = df.merge(pop_df.iloc[:,:2], left_on='state', right_on='State') # Previous line can be avoided by selecting iloc[1:3]
+df = df.merge(pop_df.iloc[:,:2], left_on='state', right_on='State') 
 df.drop('State', axis=1, inplace=True)
 
-# Load RNN model artifacts
-# scaler = joblib.load('assets/scaler.gz')
-# MODEL_PATH = 'assets/lstm.pt'
-
-# model = LSTM()
-# model.load_state_dict(torch.load(MODEL_PATH, map_location="cpu"))
 
 intro_markdown = '''
 &emsp;This app uses daily data posted by [The New York Times](https://github.com/nytimes/covid-19-data/blob/master/us-states.csv)
@@ -63,7 +59,6 @@ def return_usa_stats(df, column):
     latest_df = latest_df.droplevel(1, axis=1)  # removing agg of last from column
     latest_df = pop_df.merge(latest_df, left_on='State', right_index=True).drop(['Postal'], axis=1)
     latest_df[f'Total {column} per capita (%)'] = latest_df[column]/latest_df['Population']*100
-
     latest_df.rename({column: f'Total {column}'}, axis = 1, inplace=True)
     
     # Growth over the past week
@@ -72,21 +67,21 @@ def return_usa_stats(df, column):
 
     df = latest_df.round(decimals=3).merge(weekly_increase, left_on='State', right_index=True).drop(['Population'], axis=1)
     df[f'Weekly % of total'] = round(df[f'Weekly {column} toll'] / df[f'Total {column}'] * 100, 3)
-    # Plotly
-    # 1. Table
 
-    # TODO: Add table name and Remove margins: my-5
+    # Plotly
+
+    # 1. Table
     stats_table = dash_table.DataTable(
         id='table',
-        columns=[{"name": i, "id": i} for i in df.columns],
+        columns=[{'name': i, 'id': i} for i in df.columns],
         data=df.to_dict('records'),
-        filter_action="native",
-        sort_action="native",
-        row_selectable="multi", 
-        column_selectable="single",
+        filter_action='native',
+        sort_action='native',
+        row_selectable='multi', 
+        column_selectable='single',
         selected_columns=[],
         selected_rows=[],
-        page_action="native",
+        page_action='native',
         page_current=0, 
         page_size=9,
         style_header=
@@ -134,7 +129,6 @@ def return_usa_stats(df, column):
     )
     leg = go.layout.Legend(title='Governing Party', orientation='h', y=1.1)
     weekly_plot.update_layout(legend=leg)
-        # x=0,y=0.5)
 
     # 3. Bar chart
     bar_plot = px.bar(
@@ -142,10 +136,17 @@ def return_usa_stats(df, column):
         x='State',
         y=f'Total {column}',
         text=f'Total {column} per capita (%)',
-        title=f'Total {column} by state'
+        title=f'Total {column} by state',
+        color_discrete_map={
+            'Democratic': 'blue',
+            'Republican': 'red'
+        },
+        color='Party'
     )
     bar_plot.update_traces(texttemplate='%{text:0.2f}')
-    bar_plot.update_layout(uniformtext_minsize=8, uniformtext_mode='show')
+    bar_plot.update_layout(uniformtext_minsize=8, uniformtext_mode='show',
+        legend = go.layout.Legend(title='Governing Party')
+    )
 
     return stats_table, weekly_plot, bar_plot
 
@@ -162,7 +163,7 @@ def displayClick(case_click, death_click):
 
 # 1. USA analysis
 @app.callback(Output('cases_or_deaths_content', 'children'),
-            [Input("container-button-timestamp", "data")]
+            [Input('container-button-timestamp', 'data')]
 )
 def render_usa_data(data):
     column = data['tab']
@@ -183,7 +184,7 @@ def render_usa_data(data):
                     )
                 ], className='col-md-5 px-0'
             )
-        ], className='row mx-2'),
+        ], className='row mx-3'),
 
         html.Div(
         [
@@ -194,7 +195,7 @@ def render_usa_data(data):
                     )
                 ], className='col-md-12 px-0'
             ),
-        ], className='row mx-2'),
+        ], className='row mx-3'),
        
     ]
     )
@@ -203,7 +204,7 @@ def render_usa_data(data):
 # 2. USA map - selected state
 @app.callback(
     Output('states_content', 'figure'),
-    [Input("container-button-timestamp", "data")]
+    [Input('container-button-timestamp', 'data')]
 )
 def render_usa_map(data):
     column = data['tab']  # column: cases/ deaths
@@ -214,7 +215,7 @@ def render_usa_map(data):
     fig_usa_map = px.choropleth(
         state_df,
         locations='Postal',
-        locationmode="USA-states",
+        locationmode='USA-states',
         scope='usa',
         color=column,
         color_continuous_scale=color_theme[column],
@@ -245,7 +246,7 @@ def store_clicked_state(clickData):
         Output('lstm_plot', 'figure')
     ],
     [
-        Input("container-button-timestamp", "data"),
+        Input('container-button-timestamp', 'data'),
         Input('clicked-state', 'data')
     ]
 )
@@ -253,8 +254,8 @@ def statewise_plots(data, clickedState):
     '''
     data (dict) :: {'tab': str} can be 'cases' or 'deaths'
     clickedState (str) :: Click event is a string and first needs to be converted to dict
-    {"points": [{"curveNumber": int, "pointNumber": int, "pointIndex": int,
-                 "location": str, "z": int, "hovertext": str}]
+    {'points': [{'curveNumber': int, 'pointNumber': int, 'pointIndex': int,
+                 'location': str, 'z': int, 'hovertext': str}]
     }
     location is 2-letter state code and hovertext is set to state name
     '''
@@ -271,13 +272,13 @@ def statewise_plots(data, clickedState):
         daily_df = full_df[full_df['state']==state].set_index('date')
 
     # 1. State-wise plot
-    fig_usa_timeline = make_subplots(specs=[[{"secondary_y": True}]])
+    fig_usa_timeline = make_subplots(specs=[[{'secondary_y': True}]])
     
     fig_usa_timeline.add_trace(
         go.Scatter(
         x = daily_df.index,
         y = daily_df[column].diff(),
-        name=f"Daily {column}",
+        name=f'Daily {column}',
         fill='tozeroy',
         
         ), secondary_y = True
@@ -287,7 +288,7 @@ def statewise_plots(data, clickedState):
         go.Scatter(
         x = daily_df.index,
         y = daily_df[column],
-        name=f"Total {column}",
+        name=f'Total {column}',
         
         ), secondary_y = False
     )
@@ -318,90 +319,106 @@ def statewise_plots(data, clickedState):
 # Main Layout
 app.layout = html.Div(children=[
 
-    # Top Navbar
-    dbc.Navbar(
-        [
-        html.A(
-            # Use row and col to control vertical alignment of logo / brand
-            dbc.Row(
-                # [dbc.Col(html.H1('Covid in the USA', className="mb-2", style={'text-align': 'center'}))],
-                [dbc.Col(dbc.NavbarBrand("COVID-19 DASH", className="mb-2"))],
-                align="center",
-                # no_gutters=True,
-            )
-        )        
-        ], color='dark', dark=True
-    ),
-
-    # USA all states 
-    html.Div(children=[        
-        html.Br(),
-        dcc.Markdown(children=intro_markdown),
-        html.Div(children=[        
-            html.Button('Cases', id='btn-cases', n_clicks_timestamp=0, className="btn btn-secondary "),
-            html.Button('Deaths', id='btn-deaths', n_clicks_timestamp=0, className="btn btn-secondary "),
-            ],
-            className='btn-group btn-group-toggle my-2', 
-            style={'width': '10%','padding-left':'1%'}
+        # Top Navbar
+        dbc.Navbar(
+            [
+            html.A(
+                # Use row and col to control vertical alignment of logo / brand
+                dbc.Row(
+                    [dbc.Col(dbc.NavbarBrand('COVID-19 DASHBOARD', className='mb-2'))],
+                    align='center',
+                )
+            )        
+            ], color='dark', dark=True
         ),
-        dcc.Store(id='container-button-timestamp')
-        ]
-    ),
-    html.Div(id='cases_or_death_tabs'),
-    html.H1('Analysis of the United States', className="mb-2", style={'text-align': 'center'}),                
-    
-    # TODO: https://community.plotly.com/t/data-table-select-all-rows/16619 -> Refer for un/selecting all rows
-    html.Div(id='cases_or_deaths_content'),
-    html.Br(),
 
-    # USA map and statewise Time-series analysis
-    html.H1('State-wise analysis', className="mb-2", style={'text-align': 'center'}),        
-
-    dcc.Store(id='clicked-state'),
-
-    html.Div([
-        html.Div(
-        [
-            html.Div(children=[
-                    dcc.Graph(
-                    id='states_content'    
-                    )
-                ], className='col-md-6 px-0'
+        # USA all states 
+        html.Div(children=[        
+            html.Br(),
+            dcc.Markdown(children=intro_markdown),
+            html.Div(children=[        
+                html.Button('Cases', id='btn-cases', n_clicks_timestamp=0, className='btn btn-secondary '),
+                html.Button('Deaths', id='btn-deaths', n_clicks_timestamp=0, className='btn btn-secondary '),
+                ],
+                className='btn-group btn-group-toggle my-2 mx-1', 
+                style={'width': '10%','padding-left':'1%'}
             ),
-            html.Div(children=[
-                    dcc.Graph(
-                    id='state_plot',
-                    )
-                ], className='col-md-6 px-0'
-            )
-        ], className='row mx-2'),
+            dcc.Store(id='container-button-timestamp')
+            ]
+        ),
+        html.Div(id='cases_or_death_tabs'),
+        
+        html.H1('Analysis across the United States', className='mb-2', style={'text-align': 'center'}),                
+        html.Br(),
+        
+        # TODO: https://community.plotly.com/t/data-table-select-all-rows/16619 -> Refer for un/selecting all rows
+        html.Div(id='cases_or_deaths_content'),
+        html.Br(),
 
-        html.Div(
-        [
-            html.Div(children=[
-                    dcc.Graph(
-                    id='arima_plot'    
-                    )
-                ], className='col-md-6 px-0'
-            ),
-            html.Div(children=[
-                    dcc.Graph(
-                    id='lstm_plot',
-                    )
-                ], className='col-md-6 px-0'
-            )
-        ], className='row mx-2'),  
-    ])
+        # USA map and statewise Time-series analysis
+        html.Div(children=[
+            html.H1('State-wise analysis', className='mb-2', style={'text-align': 'center'}), 
+            html.Br(),
+            html.H4([
+                html.Span('Note:', className='badge badge-light'),
+                " Updating the predictions might take a few seconds"
+            ], className='mx-3')       
+        ]),
 
+        dcc.Store(id='clicked-state'),
+
+        html.Div([
+            html.Div(
+            [
+                html.Div(children=[
+                        dcc.Graph(
+                        id='states_content'    
+                        )
+                    ], className='col-md-6 px-0'
+                ),
+                html.Div(children=[
+                        dcc.Graph(
+                        id='state_plot',
+                        )
+                    ], className='col-md-6 px-0'
+                )
+            ], className='row mx-3'),
+
+            html.Div(
+            [
+                html.Div(children=[
+                        dcc.Graph(
+                        id='arima_plot'    
+                        )
+                    ], className='col-md-6 px-0'
+                ),
+                html.Div(children=[
+                        dcc.Graph(
+                        id='lstm_plot',
+                        )
+                    ], className='col-md-6 px-0'
+                )
+            ], className='row mx-3'),  
+        ]),
+
+        html.Div([
+            html.Br(),
+            html.P(
+                ['Any suggestions or edits? Check the ',
+                html.A("Github", href='https://github.com/kmair/covid-usa', target="_blank"),
+                ' repository']),
+        ], className='mx-3'),
+        html.Br(className='mt-n5'),
 
     ], 
-    style={'background-image': 'url("/assets/coronavirusbg.png")', 'background-size': '1700px 350px',
+    style={
+        'background-image': 'url("/assets/coronavirusbg.png")', 
+        'background-size': '1700px 350px',
         'background-attachment': 'fixed'
-    # 'background-color': 'rgba(155, 5, 5, 0.16)'
     }
 )
 
    
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     app.run_server(debug=True)

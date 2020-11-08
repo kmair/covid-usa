@@ -28,7 +28,7 @@ color_theme = {'cases': 'Blues', 'deaths': 'Greys'} # https://plotly.com/python/
 
 external_stylesheets = [dbc.themes.BOOTSTRAP]
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
-server = app.server
+# server = app.server
 
 # Recent Covid Data
 df = pd.read_csv('https://raw.githubusercontent.com/nytimes/covid-19-data/master/us-states.csv')

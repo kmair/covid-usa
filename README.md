@@ -14,12 +14,33 @@
   <a>
     <img src="https://badges.frapsoft.com/os/v1/open-source.svg?v=103">
   </a>
+
+  <img width="650" height="300" src="https://github.com/kmair/covid-usa/blob/master/snaps/dashboard.png">
 </p>
 
-This is an effort to track down the essential stats of COVID-19 within the US and estimating the cases and deaths based on time-series analysis and deep learning
+This project aims to track down the essential stats of COVID-19 within the US and estimating the cases and deaths based on time-series analysis and deep learning
 
 Track the latest developments of Covid in the US [here](https://usa-covid19-forecasts.herokuapp.com/)
 
+## Overview
+
+The project accomplishes 2 major things:
+
+**Important stats**
+
+**Future forecasts**
+
+![forecasts](https://github.com/kmair/covid-usa/blob/master/snaps/prediction.gif)
+Based on the state selected on the map, the forecast for 10 days in future is displayed. The models running in the background are:
+- ARIMA model
+- LSTM model
+
+## Usage
+
+To reproduce this project locally, do the following steps:
+1. Clone the repository
+2. Setup the environment
+3. Run the `app.py` file
 
 
 ## Contributing

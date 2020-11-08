@@ -76,4 +76,4 @@ The major issue would be to create county-wise forecasts owing to the high varia
 
 ## License
 
-![MIT license](https://github.com/kmair/covid-usa/blob/master/LICENSE)
+[MIT license](https://github.com/kmair/covid-usa/blob/master/LICENSE)
